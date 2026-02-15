@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -269,9 +270,9 @@ ${appUrl}`;
                                         </select>
                                         <div>
                                             <label className="block font-semibold mb-2">商品画像（2MB以下、複数可）</label>
-                                            <input type="file" accept="image/*" multiple onChange={e=>handleImg('pickup',e.target.files)} className="w-full px-4 py-3 border-2 rounded-lg"/>
+                                            <input type="file" accept="image/*" capture="environment" multiple onChange={e=>handleImg('pickup',e.target.files)} className="w-full px-4 py-3 border-2 rounded-lg"/>
                                             {newD.pickupImages.length>0&&<div className="mt-3 grid grid-cols-2 gap-2">{newD.pickupImages.map((img,i)=><div key={i} className="relative"><img src={img} className="w-full rounded-lg"/><button onClick={()=>rmImg('pickup',i)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6">×</button></div>)}</div>}
-                                            <p className="text-xs text-gray-500 mt-1">📷 {newD.pickupImages.length}枚</p>
+                                            <p className="text-xs text-gray-500 mt-1">📷 {newD.pickupImages.length}枚 | 📸タップでカメラ起動 or フォルダ選択</p>
                                         </div>
                                         <button onClick={register} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-lg">📦 持ち出しを登録</button>
                                     </div>
@@ -286,9 +287,9 @@ ${appUrl}`;
                                         </select>
                                         <div>
                                             <label className="block font-semibold mb-2">配達先画像（2MB以下、複数可）</label>
-                                            <input type="file" accept="image/*" multiple onChange={e=>handleImg('delivery',e.target.files)} className="w-full px-4 py-3 border-2 rounded-lg"/>
+                                            <input type="file" accept="image/*" capture="environment" multiple onChange={e=>handleImg('delivery',e.target.files)} className="w-full px-4 py-3 border-2 rounded-lg"/>
                                             {upd.deliveryImages.length>0&&<div className="mt-3 grid grid-cols-2 gap-2">{upd.deliveryImages.map((img,i)=><div key={i} className="relative"><img src={img} className="w-full rounded-lg"/><button onClick={()=>rmImg('delivery',i)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6">×</button></div>)}</div>}
-                                            <p className="text-xs text-gray-500 mt-1">📷 {upd.deliveryImages.length}枚</p>
+                                            <p className="text-xs text-gray-500 mt-1">📷 {upd.deliveryImages.length}枚 | 📸タップでカメラ起動 or フォルダ選択</p>
                                         </div>
                                         <button onClick={complete} className="w-full bg-green-600 text-white font-bold py-4 rounded-lg">✅ 配達完了を報告</button>
                                     </div>
