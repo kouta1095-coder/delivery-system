@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配送管理システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div id="app"></div>
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const STAFF = ['沖野所長','丹羽課長','田口','佐藤','宮津','園田','富川','山川','岸上'];
+        
+        function App() {
+            const [tab, setTab] = useState('register');
+            const [deliveries, setDeliveries] = useState([]);
+            const [settings, setSettings] = useState({companyName:'',notificationEmails:''});
+            const [newD, setNewD] = useState({productCode:'',quantity:'',customerName:'',pickupImages:[],assignedTo:''});
+            const [upd, setUpd] = useState({id:'',deliveryImages:[]});
+            const [searchId, setSearchId] = useState('');
+
+            useEffect(() => {
+                const saved = localStorage.getItem('deliveries');
+                const savedSettings = localStorage.getItem('settings');
+                if (saved) setDeliveries(JSON.parse(saved));
+                if (savedSettings) setSettings(JSON.parse(savedSettings));
+                cleanOld();
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('deliveries', JSON.stringify(deliveries));
+            }, [deliveries]);
+
+            useEffect(() => {
+                localStorage.setItem('settings', JSON.stringify(settings));
+            }, [settings]);
+
+            const cleanOld = () => {
+                const oneMonth = 30 * 24 * 60 * 60 * 1000;
+                const now = Date.now();
+                setDeliveries(prev => prev.filter(d => (now - new Date(d.pickupTime).getTime()) < oneMonth));
+            };
+
+            const genId = () => {
+                const d = new Date();
+                return `D${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}-${Math.floor(Math.random()*1000).toString().padStart(3,'0')}`;
+            };
+
+            const handleImg = (type, files) => {
+                if(!files?.length) return;
+                const fileArray = Array.from(files);
+                
+                // 画像サイズ制限チェック
+                for(let file of fileArray) {
+                    if(file.size > 2 * 1024 * 1024) {
+                        alert('画像サイズは2MB以下にしてください');
+                        return;
+                    }
+                }
+                
+                Promise.all(fileArray.map(f => new Promise(res => {
+                    const r = new FileReader();
+                    r.onload = e => res(e.target.result);
+                    r.readAsDataURL(f);
+                }))).then(imgs => {
+                    if(type==='pickup') setNewD(p=>({...p,pickupImages:[...p.pickupImages,...imgs]}));
+                    else setUpd(p=>({...p,deliveryImages:[...p.deliveryImages,...imgs]}));
+                });
+            };
+
+            const rmImg = (type,idx) => {
+                if(type==='pickup') setNewD(p=>({...p,pickupImages:p.pickupImages.filter((_,i)=>i!==idx)}));
+                else setUpd(p=>({...p,deliveryImages:p.deliveryImages.filter((_,i)=>i!==idx)}));
+            };
+
+            const register = () => {
+                if(!newD.productCode||!newD.quantity||!newD.customerName) {
+                    alert('品番、数量、お客様名を入力してください');
+                    return;
+                }
+                const id = genId();
+                const delivery = {
+                    id: Date.now(),
+                    deliveryId: id,
+                    productCode: newD.productCode,
+                    quantity: parseInt(newD.quantity),
+                    customerName: newD.customerName,
+                    pickupImages: newD.pickupImages,
+                    assignedTo: newD.assignedTo,
+                    pickupTime: new Date().toISOString(),
+                    status: 'in_transit',
+                    deliveryTime: null,
+                    deliveryImages: []
+                };
+                
+                setDeliveries(p => [delivery, ...p]);
+                setNewD({productCode:'',quantity:'',customerName:'',pickupImages:[],assignedTo:''});
+                alert(`✅ 登録完了\n配送ID: ${id}`);
+            };
+
+            const complete = () => {
+                if(!upd.id) {
+                    alert('商品を選択してください');
+                    return;
+                }
+                
+                setDeliveries(p => p.map(d => d.id === parseInt(upd.id) ? {
+                    ...d,
+                    deliveryTime: new Date().toISOString(),
+                    deliveryImages: upd.deliveryImages,
+                    status: 'delivered'
+                } : d));
+                
+                setUpd({id:'',deliveryImages:[]});
+                alert('✅ 配達完了を報告しました');
+            };
+
+            const sendEmail = d => {
+                const cn = settings.companyName || '配送管理システム';
+                const emails = settings.notificationEmails.split(',').map(e=>e.trim()).filter(e=>e);
+                const appUrl = window.location.href;
+                const subj = `【${cn}】配達完了: ${d.productCode}`;
+                const body = `${cn}\n\nお客様: ${d.customerName}\n品番: ${d.productCode}\n数量: ${d.quantity}個\n担当: ${d.assignedTo||'未設定'}\n\n配送ID: ${d.deliveryId}\n確認: ${appUrl}`;
+                window.location.href = emails.length ? `mailto:${emails.join(',')}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}` : `mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+            };
+
+            const shareLine = async d => {
+                const cn = settings.companyName || '配送管理システム';
+                const appUrl = window.location.href;
+                const msg = `【${cn}】配達完了✅
+
+📦 ${d.productCode} (${d.quantity}個)
+👤 ${d.assignedTo||'未設定'}
+🏢 ${d.customerName}
+📷 画像 ${d.pickupImages.length+d.deliveryImages.length}枚
+
+🔑 配送ID
+${d.deliveryId}
+
+📱 確認はこちら
+${appUrl}`;
+                try {
+                    await navigator.clipboard.writeText(msg);
+                    alert('✅ コピー完了！\n\nLINEで貼り付けて送信してください。');
+                } catch(e) {
+                    const t = document.createElement('textarea');
+                    t.value = msg;
+                    document.body.appendChild(t);
+                    t.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(t);
+                    alert('✅ コピー完了！');
+                }
+            };
+
+            const search = () => {
+                if(!searchId.trim()) {
+                    alert('配送IDを入力してください');
+                    return;
+                }
+                const found = deliveries.find(d=>d.deliveryId===searchId.trim());
+                if(found) {
+                    if(found.status!=='delivered') {
+                        alert('⚠️ まだ配達完了していません');
+                        return;
+                    }
+                    setTab('result');
+                } else {
+                    alert('❌ 配送IDが見つかりません');
+                }
+            };
+
+            const fmt = iso => iso ? new Date(iso).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+
+            const group = () => {
+                const g = {};
+                STAFF.forEach(s => g[s] = deliveries.filter(d=>d.assignedTo===s));
+                g['未設定'] = deliveries.filter(d=>!d.assignedTo);
+                return g;
+            };
+
+            const clearAll = () => {
+                if(confirm('⚠️ 全てのデータを削除しますか？')) {
+                    localStorage.clear();
+                    setDeliveries([]);
+                    setSettings({companyName:'',notificationEmails:''});
+                    alert('✅ 全削除完了');
+                }
+            };
+
+            const result = deliveries.find(d=>d.deliveryId===searchId.trim());
+            const groups = group();
+
+            return (
+                <div className="min-h-screen p-4">
+                    <div className="max-w-4xl mx-auto">
+                        <header className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+                            <h1 className="text-3xl font-bold text-gray-800">🚚 配送管理システム</h1>
+                            <p className="text-sm text-green-600">💾 ブラウザに自動保存 | URLをブックマーク登録してください</p>
+                        </header>
+
+                        <div className="bg-white rounded-2xl shadow-lg mb-6">
+                            <div className="flex border-b overflow-x-auto">
+                                {[{id:'search',l:'🔍 検索'},{id:'register',l:'📦 持ち出し'},{id:'update',l:'✅ 完了'},{id:'list',l:'🚚 一覧'},{id:'settings',l:'⚙️ 設定'}].map(t=>(
+                                    <button key={t.id} onClick={()=>setTab(t.id)} className={`flex-1 py-4 px-3 font-semibold text-sm ${tab===t.id?'bg-indigo-600 text-white':'bg-gray-50 text-gray-600'}`}>{t.l}</button>
+                                ))}
+                            </div>
+
+                            <div className="p-6">
+                                {tab==='search'&&(
+                                    <div className="space-y-4">
+                                        <h2 className="text-xl font-bold">🔍 配送ID検索</h2>
+                                        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                                            <p className="text-sm text-blue-800">LINEで受け取った配送IDを入力</p>
+                                        </div>
+                                        <input type="text" value={searchId} onChange={e=>setSearchId(e.target.value)} className="w-full px-4 py-3 border-2 rounded-lg" placeholder="例: D20250215-1030-123"/>
+                                        <button onClick={search} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-lg">🔍 検索</button>
+                                    </div>
+                                )}
+
+                                {tab==='result'&&result&&(
+                                    <div>
+                                        <div className="flex justify-between mb-4">
+                                            <h2 className="text-xl font-bold">検索結果</h2>
+                                            <button onClick={()=>{setTab('search');setSearchId('');}} className="text-indigo-600 font-semibold">← 戻る</button>
+                                        </div>
+                                        <div className="border-2 border-indigo-300 rounded-xl p-4 bg-indigo-50 space-y-3">
+                                            <div className="bg-white rounded-lg p-4">
+                                                <p className="text-xs text-gray-600">配送ID</p>
+                                                <p className="text-lg font-bold text-indigo-600">{result.deliveryId}</p>
+                                            </div>
+                                            <div className="bg-white rounded-lg p-4">
+                                                <p className="text-2xl font-bold mb-2">{result.productCode}</p>
+                                                <p className="font-semibold mb-1">🏢 {result.customerName}</p>
+                                                <p className="font-semibold mb-1">📦 {result.quantity}個</p>
+                                                <p className="font-semibold text-indigo-600">👤 {result.assignedTo||'未設定'}</p>
+                                            </div>
+                                            <div className="bg-blue-100 rounded-lg p-4">
+                                                <p className="font-semibold text-blue-800 mb-2">📦 持ち出し {fmt(result.pickupTime)}</p>
+                                                {result.pickupImages.length>0&&<div className="grid grid-cols-2 gap-2">{result.pickupImages.map((img,i)=><img key={i} src={img} className="w-full rounded-lg cursor-pointer" onClick={()=>window.open(img)}/>)}</div>}
+                                            </div>
+                                            <div className="bg-green-100 rounded-lg p-4">
+                                                <p className="font-semibold text-green-800 mb-2">✅ 配達完了 {fmt(result.deliveryTime)}</p>
+                                                {result.deliveryImages.length>0&&<div className="grid grid-cols-2 gap-2">{result.deliveryImages.map((img,i)=><img key={i} src={img} className="w-full rounded-lg cursor-pointer" onClick={()=>window.open(img)}/>)}</div>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {tab==='register'&&(
+                                    <div className="space-y-4">
+                                        <h2 className="text-xl font-bold">📦 商品持ち出し登録</h2>
+                                        <input type="text" value={newD.customerName} onChange={e=>setNewD(p=>({...p,customerName:e.target.value}))} className="w-full px-4 py-3 border-2 rounded-lg" placeholder="お客様名"/>
+                                        <input type="text" value={newD.productCode} onChange={e=>setNewD(p=>({...p,productCode:e.target.value}))} className="w-full px-4 py-3 border-2 rounded-lg" placeholder="品番"/>
+                                        <input type="number" value={newD.quantity} onChange={e=>setNewD(p=>({...p,quantity:e.target.value}))} className="w-full px-4 py-3 border-2 rounded-lg" placeholder="数量" min="1"/>
+                                        <select value={newD.assignedTo} onChange={e=>setNewD(p=>({...p,assignedTo:e.target.value}))} className="w-full px-4 py-3 border-2 rounded-lg">
+                                            <option value="">担当者を選択</option>
+                                            {STAFF.map(s=><option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                        <div>
+                                            <label className="block font-semibold mb-2">商品画像（2MB以下、複数可）</label>
+                                            <input type="file" accept="image/*" multiple onChange={e=>handleImg('pickup',e.target.files)} className="w-full px-4 py-3 border-2 rounded-lg"/>
+                                            {newD.pickupImages.length>0&&<div className="mt-3 grid grid-cols-2 gap-2">{newD.pickupImages.map((img,i)=><div key={i} className="relative"><img src={img} className="w-full rounded-lg"/><button onClick={()=>rmImg('pickup',i)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6">×</button></div>)}</div>}
+                                            <p className="text-xs text-gray-500 mt-1">📷 {newD.pickupImages.length}枚</p>
+                                        </div>
+                                        <button onClick={register} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-lg">📦 持ち出しを登録</button>
+                                    </div>
+                                )}
+
+                                {tab==='update'&&(
+                                    <div className="space-y-4">
+                                        <h2 className="text-xl font-bold">✅ 配達完了報告</h2>
+                                        <select value={upd.id} onChange={e=>setUpd(p=>({...p,id:e.target.value}))} className="w-full px-4 py-3 border-2 rounded-lg">
+                                            <option value="">配達する商品を選択</option>
+                                            {deliveries.filter(d=>d.status==='in_transit').map(d=><option key={d.id} value={d.id}>[{d.customerName}] {d.productCode} - {d.quantity}個 - {d.assignedTo||'未設定'}</option>)}
+                                        </select>
+                                        <div>
+                                            <label className="block font-semibold mb-2">配達先画像（2MB以下、複数可）</label>
+                                            <input type="file" accept="image/*" multiple onChange={e=>handleImg('delivery',e.target.files)} className="w-full px-4 py-3 border-2 rounded-lg"/>
+                                            {upd.deliveryImages.length>0&&<div className="mt-3 grid grid-cols-2 gap-2">{upd.deliveryImages.map((img,i)=><div key={i} className="relative"><img src={img} className="w-full rounded-lg"/><button onClick={()=>rmImg('delivery',i)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6">×</button></div>)}</div>}
+                                            <p className="text-xs text-gray-500 mt-1">📷 {upd.deliveryImages.length}枚</p>
+                                        </div>
+                                        <button onClick={complete} className="w-full bg-green-600 text-white font-bold py-4 rounded-lg">✅ 配達完了を報告</button>
+                                    </div>
+                                )}
+
+                                {tab==='list'&&(
+                                    <div>
+                                        <h2 className="text-xl font-bold mb-4">🚚 配送状況一覧</h2>
+                                        <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-3 mb-4">
+                                            <p className="text-sm text-yellow-800">💾 このブラウザに保存 | 1ヶ月で自動削除</p>
+                                        </div>
+                                        {deliveries.length===0?<p className="text-center py-12 text-gray-500">配送記録がありません</p>:
+                                        <div className="space-y-6">
+                                            {Object.entries(groups).map(([staff,items])=>{
+                                                if(!items.length) return null;
+                                                return (
+                                                    <div key={staff} className="border-2 border-indigo-200 rounded-xl overflow-hidden">
+                                                        <div className="bg-indigo-600 text-white px-4 py-3 font-bold flex justify-between">
+                                                            <span>👤 {staff}</span>
+                                                            <span className="text-sm bg-white text-indigo-600 px-3 py-1 rounded-full">{items.length}件</span>
+                                                        </div>
+                                                        <div className="p-4 space-y-3 bg-gray-50">
+                                                            {items.map(d=>(
+                                                                <div key={d.id} className="bg-white border rounded-lg p-4">
+                                                                    <p className="text-xs font-mono bg-gray-100 rounded px-2 py-1 inline-block mb-2">{d.deliveryId}</p>
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <span className="font-bold">{d.productCode}</span>
+                                                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${d.status==='delivered'?'bg-green-100 text-green-800':'bg-yellow-100 text-yellow-800'}`}>
+                                                                            {d.status==='delivered'?'✓ 済':'🚚 配送中'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-sm mb-1">🏢 {d.customerName}</p>
+                                                                    <p className="text-sm mb-2">📦 {d.quantity}個</p>
+                                                                    <p className="text-xs text-gray-600">🚚 {fmt(d.pickupTime)}</p>
+                                                                    {d.status==='delivered'&&(
+                                                                        <>
+                                                                            <p className="text-xs text-gray-600">✅ {fmt(d.deliveryTime)}</p>
+                                                                            <div className="mt-3 grid grid-cols-2 gap-2">
+                                                                                <button onClick={()=>sendEmail(d)} className="bg-blue-600 text-white py-2 rounded text-xs font-semibold">📧 メール</button>
+                                                                                <button onClick={()=>shareLine(d)} className="bg-green-600 text-white py-2 rounded text-xs font-semibold">💬 LINE</button>
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>}
+                                    </div>
+                                )}
+
+                                {tab==='settings'&&(
+                                    <div className="space-y-6">
+                                        <h2 className="text-xl font-bold">⚙️ 設定</h2>
+                                        <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
+                                            <h3 className="font-bold text-green-800 mb-2">💾 データ保存</h3>
+                                            <ul className="text-sm text-green-700 space-y-1">
+                                                <li>• このブラウザに自動保存</li>
+                                                <li>• 1ヶ月経過で自動削除</li>
+                                                <li>• URLをブックマーク登録してください</li>
+                                            </ul>
+                                        </div>
+                                        <input type="text" value={settings.companyName} onChange={e=>setSettings(p=>({...p,companyName:e.target.value}))} className="w-full px-4 py-3 border-2 rounded-lg" placeholder="会社名・営業所名"/>
+                                        <textarea value={settings.notificationEmails} onChange={e=>setSettings(p=>({...p,notificationEmails:e.target.value}))} className="w-full px-4 py-3 border-2 rounded-lg" placeholder="メール通知先（カンマ区切り）" rows="3"/>
+                                        <div className="bg-indigo-50 border-2 border-indigo-200 rounded-lg p-4">
+                                            <h3 className="font-bold text-indigo-800 mb-2">👥 登録メンバー</h3>
+                                            <div className="grid grid-cols-2 gap-2 text-sm">
+                                                {STAFF.map(s=><div key={s} className="bg-white rounded px-3 py-2 text-indigo-700 font-semibold">• {s}</div>)}
+                                            </div>
+                                        </div>
+                                        <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
+                                            <h3 className="font-bold text-red-800 mb-2">⚠️ テスト用</h3>
+                                            <button onClick={clearAll} className="bg-red-600 text-white py-2 px-4 rounded font-semibold">🗑️ 全データ削除</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('app'));
+    </script>
+</body>
+</html>
